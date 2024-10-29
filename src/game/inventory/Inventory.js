@@ -3,8 +3,8 @@ export class Inventory {
     constructor() {
       this.items = {
         seeds: 10,
-        lettuce: 0,
-        money: 0 // Starting money
+        lettuce: 10,
+        money: 100 // Starting money
       };
     }
   

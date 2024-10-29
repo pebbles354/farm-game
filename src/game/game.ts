@@ -7,6 +7,9 @@ import { CropSystem } from './systems/CropSystem.js';
 import { characters } from '../../data/characters.ts';
 import { Inventory } from './inventory/Inventory.js';
 import { InventoryUI } from './inventory/InventoryUI.js';
+import { MessageSystem } from './systems/MessageSystem';
+import { Store } from './store/Store';
+import { PlantingHandler } from './systems/PlantingHandler.ts';
 
 export class Game {
   private app: PIXI.Application;
@@ -32,6 +35,19 @@ export class Game {
   private inventory: Inventory;
   private inventoryUI: InventoryUI;
 
+  // Message System
+  private messageSystem: MessageSystem;
+
+  // Store System
+  private store: Store;
+
+  // Planting Handler
+  private plantingHandler: PlantingHandler;
+
+  // UI Container
+  private uiContainer: PIXI.Container;
+  private messageContainer: PIXI.Container;
+
   constructor(app: PIXI.Application) {
     this.app = app;
     this.tileSize = 32;
@@ -46,11 +62,22 @@ export class Game {
     // Add the world container to the stage
     this.app.stage.addChild(this.world);
     
+    // Initialize UI Container
+    this.uiContainer = new PIXI.Container();
+    this.app.stage.addChild(this.uiContainer);
+    
+    // Initialize Message Container
+    this.messageContainer = new PIXI.Container();
+    this.app.stage.addChild(this.messageContainer);
+    
     // Initialize Inventory
     this.inventory = new Inventory();
     
     // Initialize Inventory UI
     this.inventoryUI = new InventoryUI(this.app, this.inventory);
+    
+    // Initialize MessageSystem after world and inventoryUI are created
+    this.messageSystem = new MessageSystem(this.app, this.world, this.inventoryUI.container, this.messageContainer);
     
     // Enable dragging
     this.isDragging = false;
@@ -65,15 +92,14 @@ export class Game {
     window.addEventListener('keydown', (e: KeyboardEvent) => {
       this.keys[e.key] = true;
       if (e.key === ' ') {
-        this.handlePlanting();
+        const playerPos = this.player?.getPosition();
+        if (playerPos && this.store.isPlayerInRange(playerPos.x, playerPos.y)) {
+          this.store.toggleMenu(this.app);
+        } else {
+          this.plantingHandler.handlePlanting(playerPos);
+        }
       }
-      // Handle buying and selling via keyboard
-      if (e.key === 'b') { // 'b' to buy seeds
-        this.handleBuySeeds();
-      }
-      if (e.key === 'v') { // 'v' to sell lettuce
-        this.handleSellLettuce();
-      }
+
     });
     window.addEventListener('keyup', (e: KeyboardEvent) => {
       this.keys[e.key] = false;
@@ -81,6 +107,17 @@ export class Game {
 
     // Load the texture and initialize the game
     this.loadTextures();
+
+    // Initialize Planting Handler
+    this.plantingHandler = new PlantingHandler(
+      this.tileSize,
+      this.world,
+      this.inventory,
+      this.inventoryUI,
+      this.messageSystem,
+      this.cropSystem,
+      this.worldGenerator
+    );
   }
 
   loadTextures() {
@@ -98,14 +135,28 @@ export class Game {
   init() {
     // Generate world using WorldGenerator
     this.worldGenerator.generate(this.world);
+    // Store reference to worldGenerator
+    (this.world as any).worldGenerator = this.worldGenerator;
+    
     this.setupInteraction();
     
     // Create player at the center of the farmland
     const centerX = (this.worldSize * this.tileSize) / 2;
     const centerY = (this.worldSize * this.tileSize) / 2;
-    this.player = new Player(centerX, centerY, this.tileSize, this.inventory);
+    this.player = new Player(centerX, centerY, this.tileSize, this.worldSize, this.world);
     this.world.addChild(this.player.sprite);
     
+    // Initialize store
+    const storePosX = Math.floor(this.worldSize / 2) - 1;
+    const storePosY = 0;
+    this.store = new Store(
+      storePosX * this.tileSize + this.tileSize, 
+      storePosY * this.tileSize + this.tileSize,
+      this.inventory,
+      this.messageSystem,
+      this.inventoryUI,
+      this.uiContainer
+    );
     // Center the view on the player
     this.centerViewOnPlayer();
 
@@ -117,6 +168,11 @@ export class Game {
     if (!this.isDragging && this.player) {
       this.player.update();
       this.centerViewOnPlayer();
+
+      const playerPos = this.player.getPosition();
+      if (this.store.isMenuOpen && !this.store.isPlayerInRange(playerPos.x, playerPos.y)) {
+        this.store.closeMenu();
+      }
     }
   }
 
@@ -128,91 +184,6 @@ export class Game {
     }
   }
 
-  handlePlanting() {
-    if (this.isDragging || !this.player) return;
-
-    const playerPos = this.player.getPosition();
-    const worldX = Math.floor(playerPos.x / this.tileSize);
-    const worldY = Math.floor(playerPos.y / this.tileSize);
-    
-    // Check if player is in farmland area
-    if (this.worldGenerator.isFarmland(worldX, worldY)) {
-      // Check if player has seeds
-      if (this.inventory.getItemQuantity('seeds') > 0) {
-        const plot = {
-          position: new PIXI.Point(worldX * this.tileSize, worldY * this.tileSize)
-        };
-        this.cropSystem.plantCrop(plot, this.world);
-        // Remove a seed from inventory
-        this.inventory.removeItem('seeds', 1);
-        this.inventoryUI.update();
-      } else {
-        // Remove any existing message containers
-        const existingMessages = this.app.stage.children.filter(child => 
-          child instanceof PIXI.Container && child !== this.world && child !== this.inventoryUI.container
-        );
-        existingMessages.forEach(message => this.app.stage.removeChild(message));
-
-        const messageContainer = new PIXI.Container();
-        const messageBackground = new PIXI.Graphics();
-        messageBackground.beginFill(0x000000, 0.5); // Semi-transparent black
-        messageBackground.drawRect(0, 0, 300, 50);
-        messageBackground.endFill();
-        messageContainer.addChild(messageBackground);
-
-        const message = new PIXI.Text('No seeds available to plant.', {
-          fill: "#FFFFFF",
-          fontSize: 14,
-          fontWeight: "bold"
-        });
-        message.position.set(10, 15);
-        messageContainer.addChild(message);
-
-        messageContainer.position.set(
-          (this.app.screen.width - messageContainer.width) / 2,
-          this.app.screen.height - messageContainer.height - 20
-        );
-        this.app.stage.addChild(messageContainer);
-
-        // Remove message after 10 seconds
-        setTimeout(() => {
-          this.app.stage.removeChild(messageContainer);
-        }, 10000);
-      }
-    }
-  }
-
-  handleBuySeeds() {
-    // Define seed price
-    const seedPrice = 5;
-    // Define how many seeds to buy per transaction
-    const seedsToBuy = 1;
-
-    if (this.inventory.getItemQuantity('money') >= seedPrice * seedsToBuy) {
-      this.inventory.buySeeds(seedsToBuy, seedPrice);
-      this.inventoryUI.update();
-      console.log(`Bought ${seedsToBuy} seed(s) for $${seedPrice * seedsToBuy}.`);
-    } else {
-      console.warn('Not enough money to buy seeds.');
-      // Optionally, display a message to the player
-    }
-  }
-
-  handleSellLettuce() {
-    // Define lettuce price
-    const lettucePrice = 10;
-    // Define how many lettuce to sell per transaction
-    const lettuceToSell = 1;
-
-    if (this.inventory.getItemQuantity('lettuce') >= lettuceToSell) {
-      this.inventory.sellLettuce(lettuceToSell, lettucePrice);
-      this.inventoryUI.update();
-      console.log(`Sold ${lettuceToSell} lettuce(s) for $${lettucePrice * lettuceToSell}.`);
-    } else {
-      console.warn('Not enough lettuce to sell.');
-      // Optionally, display a message to the player
-    }
-  }
 
   setupInteraction() {
     this.world.on('pointerdown', (event) => {
