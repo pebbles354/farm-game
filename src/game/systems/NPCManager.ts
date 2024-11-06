@@ -7,10 +7,15 @@ export class NPCManager {
   private npcSprites: Map<string, NPC> = new Map();
   private messageSystem: MessageSystem;
   private tileSize: number;
+  private isPaused: boolean = false;
 
   constructor(messageSystem: MessageSystem, tileSize: number) {
     this.messageSystem = messageSystem;
     this.tileSize = tileSize;
+  }
+
+  public setPauseState(isPaused: boolean) {
+    this.isPaused = isPaused;
   }
 
   registerNPCSprite(npcId: string, npcSprite: NPC) {
@@ -66,123 +71,163 @@ export class NPCManager {
 
   private async performAction(npcId: string) {
     const npc = this.npcs.get(npcId);
-    if (!npc) return;
+    const sourceNpcSprite = this.npcSprites.get(npcId);
+    if (!npc || !sourceNpcSprite || sourceNpcSprite.isBusyState()) return;
 
-    const actions = ['FARM', 'VISIT'];
-    const randomAction = actions[Math.floor(Math.random() * actions.length)];
+    let randomAction = ['FARM', 'VISIT'][Math.floor(Math.random() * 2)];
 
     if (randomAction === 'FARM') {
       const sourceNpcSprite = this.npcSprites.get(npcId);
       if (sourceNpcSprite) {
-        // Return to original farm position first
-        console.log(`${npc.name} is returning to their farm`);
-        sourceNpcSprite.moveTo(npc.position.x, npc.position.y);
-
-        // Wait until NPC reaches their farm
-        while (!sourceNpcSprite.isAtTarget()) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-
-        // Start farming once they're at their farm
-        npc.currentAction = { type: 'FARM' };
-        console.log(`${npc.name} is farming`);
+        const currentPos = sourceNpcSprite.getPosition();
         
-        await new Promise(resolve => setTimeout(resolve, 10000));
-        const goldEarned = Math.floor(Math.random() * 20) + 5;
-        npc.gold += goldEarned;
-        
-        console.log(`${npc.name} earned ${goldEarned} gold from farming`);
-      }
-    } else {
-      const otherNpcs = Array.from(this.npcs.values()).filter(n => n.id !== npcId);
-      const targetNpc = otherNpcs[Math.floor(Math.random() * otherNpcs.length)];
-      
-      npc.currentAction = { type: 'VISIT', targetId: targetNpc.id };
-      console.log(`${npc.name} is visiting ${targetNpc.name}`);
+        // Check if NPC is already at their farm
+        const isAtFarm = Math.abs(currentPos.x - npc.position.x) <= this.tileSize &&
+                        Math.abs(currentPos.y - npc.position.y) <= this.tileSize;
 
-      const sourceNpcSprite = this.npcSprites.get(npcId);
-      const targetNpcSprite = this.npcSprites.get(targetNpc.id);
+        if (!isAtFarm) {
+          // Return to original farm position first
+          console.log(`${npc.name} is returning to their farm`);
+          sourceNpcSprite.moveTo(npc.position.x, npc.position.y, 'FARM');
 
-      if (sourceNpcSprite && targetNpcSprite) {
-        let hasReachedTarget = false;
-        let attempts = 0;
-        const maxAttempts = 3; // Prevent infinite chase
+          // Wait until NPC reaches their farm or max time elapsed
+          let timeoutCounter = 0;
+          const maxTimeout = 600; // 30 seconds maximum wait time
 
-        while (!hasReachedTarget && attempts < maxAttempts) {
-          const targetPos = targetNpcSprite.getPosition();
-          sourceNpcSprite.moveTo(targetPos.x, targetPos.y);
-
-          // Wait for NPC to reach target or get close enough
-          while (!sourceNpcSprite.isAtTarget()) {
-            const currentPos = sourceNpcSprite.getPosition();
-            const newTargetPos = targetNpcSprite.getPosition();
-            
-            // Check if target has moved significantly
-            const distance = Math.sqrt(
-              Math.pow(currentPos.x - newTargetPos.x, 2) + 
-              Math.pow(currentPos.y - newTargetPos.y, 2)
-            );
-
-            // If within 2 tiles, consider it close enough
-            if (distance <= this.tileSize * 2) {
-              hasReachedTarget = true;
-              break;
-            }
-
-            // If target has moved significantly, update path
-            if (Math.abs(targetPos.x - newTargetPos.x) > this.tileSize || 
-                Math.abs(targetPos.y - newTargetPos.y) > this.tileSize) {
-              break; // Break the inner loop to recalculate path
-            }
-
+          while (!sourceNpcSprite.isAtTarget() && timeoutCounter < maxTimeout) {
             await new Promise(resolve => setTimeout(resolve, 100));
-          }
+            timeoutCounter++;
 
-          attempts++;
+            // Check current position
+            const currentPos = sourceNpcSprite.getPosition();
+            const reachedFarm = Math.abs(currentPos.x - npc.position.x) <= this.tileSize &&
+                               Math.abs(currentPos.y - npc.position.y) <= this.tileSize;
+            
+            if (reachedFarm) {
+              break; // Exit the loop if we've reached the farm
+            }
+          }
+          
+          // Final position check
+          const finalPos = sourceNpcSprite.getPosition();
+          const reachedFarm = Math.abs(finalPos.x - npc.position.x) <= this.tileSize &&
+                             Math.abs(finalPos.y - npc.position.y) <= this.tileSize;
+          
+          if (!reachedFarm) {
+            console.log(`${npc.name} couldn't reach their farm, retrying action later`);
+            npc.currentAction = null; // Clear the action so it can be retried
+            return;
+          }
         }
 
-        // Only proceed with conversation if we reached the target
-        if (hasReachedTarget) {
-          console.log(`${npc.name} is talking with ${targetNpc.name}`);
-          
-          // Stop both NPCs for conversation
-          sourceNpcSprite.startConversation();
-          targetNpcSprite.startConversation();
+        // Only proceed with farming if they're at their farm
+        if (isAtFarm || sourceNpcSprite.isAtTarget()) {
+          npc.currentAction = { type: 'FARM' };
+          console.log(`${npc.name} is farming`);
           
           await new Promise(resolve => setTimeout(resolve, 10000));
+          const goldEarned = Math.floor(Math.random() * 20) + 5;
+          npc.gold += goldEarned;
           
-          // Resume both NPCs after conversation
-          sourceNpcSprite.endConversation();
-          targetNpcSprite.endConversation();
+          console.log(`${npc.name} earned ${goldEarned} gold from farming`);
+        }
+      }
+    } else if (randomAction === 'VISIT') {
+      const availableNpcs = Array.from(this.npcs.values()).filter(n => 
+        n.id !== npcId && 
+        (!n.currentAction || n.currentAction.type !== 'VISIT')
+      );
 
-          // Random chance to help with event or accuse
-          if (Math.random() < 0.3 && targetNpc.events.length > 0) {
-            const event = targetNpc.events[0];
-            if (npc.gold >= event.goldRequired) {
-              npc.gold -= event.goldRequired;
-              targetNpc.events = targetNpc.events.filter(e => e.id !== event.id);
-              this.updateRelationship(npcId, targetNpc.id, 2);
-              console.log(`${npc.name} helped ${targetNpc.name} resolve their event!`);
-              // Add another delay after helping
-              await new Promise(resolve => setTimeout(resolve, 5000));
+      if (availableNpcs.length === 0) {
+        console.log(`${npc.name} couldn't find anyone to visit, going farming instead`);
+        randomAction = 'FARM';
+      } else {
+        const targetNpc = availableNpcs[Math.floor(Math.random() * availableNpcs.length)];
+        npc.currentAction = { type: 'VISIT', targetId: targetNpc.id };
+        console.log(`${npc.name} is visiting ${targetNpc.name}`);
+
+        const sourceNpcSprite = this.npcSprites.get(npcId);
+        const targetNpcSprite = this.npcSprites.get(targetNpc.id);
+
+        if (sourceNpcSprite && targetNpcSprite) {
+          let hasReachedTarget = false;
+          let attempts = 0;
+          const maxAttempts = 4; // Prevent infinite chase
+
+          while (!hasReachedTarget && attempts < maxAttempts) {
+            const targetPos = targetNpcSprite.getPosition();
+            sourceNpcSprite.moveTo(targetPos.x, targetPos.y, 'VISIT');
+
+            // Wait for NPC to reach target or get close enough
+            while (!sourceNpcSprite.isAtTarget()) {
+              const currentPos = sourceNpcSprite.getPosition();
+              const newTargetPos = targetNpcSprite.getPosition();
+              
+              // Check if target has moved significantly
+              const distance = Math.sqrt(
+                Math.pow(currentPos.x - newTargetPos.x, 2) + 
+                Math.pow(currentPos.y - newTargetPos.y, 2)
+              );
+
+              // If within 2 tiles, consider it close enough
+              if (distance <= this.tileSize * 2) {
+                hasReachedTarget = true;
+                break;
+              }
+
+              // If target has moved significantly, update path
+              if (Math.abs(targetPos.x - newTargetPos.x) > this.tileSize || 
+                  Math.abs(targetPos.y - newTargetPos.y) > this.tileSize) {
+                break; // Break the inner loop to recalculate path
+              }
+
+              await new Promise(resolve => setTimeout(resolve, 100));
             }
-          } else if (Math.random() < 0.1) {
-            npc.currentAction = { type: 'ACCUSE', targetId: targetNpc.id };
-            this.updateRelationship(npcId, targetNpc.id, -3);
-            console.log(`${npc.name} accused ${targetNpc.name} of being a witch!`);
-            // Add delay after accusation
-            await new Promise(resolve => setTimeout(resolve, 5000));
+
+            attempts++;
           }
 
-          // Return to original position
-          const originalPos = npc.position;
-          sourceNpcSprite.moveTo(originalPos.x, originalPos.y);
-          
-          while (!sourceNpcSprite.isAtTarget()) {
-            await new Promise(resolve => setTimeout(resolve, 100));
+          // Only proceed with conversation if we reached the target
+          if (hasReachedTarget) {
+            console.log(`${npc.name} is talking with ${targetNpc.name}`);
+            
+            // Stop both NPCs for conversation
+            sourceNpcSprite.startConversation();
+            targetNpcSprite.startConversation();
+            
+            await new Promise(resolve => setTimeout(resolve, 10000));
+            
+            // Resume both NPCs after conversation
+            sourceNpcSprite.endConversation();
+            targetNpcSprite.endConversation();
+
+            // Random chance to help with event or accuse
+            if (Math.random() < 0.3 && targetNpc.events.length > 0) {
+              const event = targetNpc.events[0];
+              if (npc.gold >= event.goldRequired) {
+                npc.gold -= event.goldRequired;
+                targetNpc.events = targetNpc.events.filter(e => e.id !== event.id);
+                this.updateRelationship(npcId, targetNpc.id, 2);
+                console.log(`${npc.name} helped ${targetNpc.name} resolve their event!`);
+              }
+            } else if (Math.random() < 0.1) {
+              npc.currentAction = { type: 'ACCUSE', targetId: targetNpc.id };
+              this.updateRelationship(npcId, targetNpc.id, -3);
+              console.log(`${npc.name} accused ${targetNpc.name} of being a witch!`);
+            }
+          } else {
+            console.log(`${npc.name} couldn't catch up with ${targetNpc.name}. Details:`, {
+              attempts: attempts,
+              sourcePosition: sourceNpcSprite.getPosition(),
+              targetPosition: targetNpcSprite.getPosition(),
+              distance: Math.sqrt(
+                Math.pow(sourceNpcSprite.getPosition().x - targetNpcSprite.getPosition().x, 2) + 
+                Math.pow(sourceNpcSprite.getPosition().y - targetNpcSprite.getPosition().y, 2)
+              ),
+              maxAllowedDistance: this.tileSize * 2,
+              isSourceMoving: sourceNpcSprite.isAtTarget() ? 'No' : 'Yes'
+            });
           }
-        } else {
-          console.log(`${npc.name} couldn't catch up with ${targetNpc.name}`);
         }
       }
     }
@@ -191,11 +236,15 @@ export class NPCManager {
   }
 
   update() {
+    if (this.isPaused) return;
+    
     for (const npc of this.npcs.values()) {
-      if (!npc.currentAction) {
+      const npcSprite = this.npcSprites.get(npc.id);
+      if (!npc.currentAction && npcSprite && !npcSprite.isBusyState()) {
         this.generateRandomEvent(npc.id);
         this.performAction(npc.id);
       }
     }
   }
+
 } 

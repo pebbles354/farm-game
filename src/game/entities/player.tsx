@@ -13,6 +13,7 @@ export class Player {
   private currentDirection: 'down' | 'up' | 'left' | 'right' = 'down';
   private worldSize: number;
   private world: PIXI.Container;
+  private isPaused: boolean = false;
 
   constructor(x: number, y: number, tileSize: number, worldSize: number, world: PIXI.Container) {
     this.speed = 4;
@@ -112,7 +113,16 @@ export class Player {
     return true;
   }
 
+  public setPauseState(isPaused: boolean): void {
+    this.isPaused = isPaused;
+    if (isPaused && this.sprite.playing) {
+      this.sprite.stop();
+    }
+  }
+
   public update(): void {
+    if (this.isPaused) return;
+    
     let newX = this.sprite.x;
     let newY = this.sprite.y;
     let isMoving = false;

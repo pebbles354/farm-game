@@ -25,6 +25,11 @@ export class NPC {
   private path: Array<{x: number, y: number}> = [];
   private currentPathIndex: number = 0;
   private isInConversation: boolean = false;
+  private savedPath: Array<{x: number, y: number}> = [];
+  private isInterrupted: boolean = false;
+  private interruptedTarget: { x: number, y: number } | null = null;
+  private currentActionType: 'VISIT' | 'FARM' | null = null;
+  private isBusy: boolean = false;
 
   constructor(x: number, y: number, spritesheetData: SpritesheetData, state: NPCState, worldGenerator: WorldGenerator) {
     this.worldGenerator = worldGenerator;
@@ -61,7 +66,8 @@ export class NPC {
     this.state = newState;
   }
 
-  public moveTo(targetX: number, targetY: number): void {
+  public moveTo(targetX: number, targetY: number, actionType: 'VISIT' | 'FARM' | null = null): void {
+    this.currentActionType = actionType;
     this.path = this.findPathToTarget(this.sprite.x, this.sprite.y, targetX, targetY);
     this.currentPathIndex = 0;
   }
@@ -101,6 +107,9 @@ export class NPC {
   }
 
   public isAtTarget(): boolean {
+    if (this.isInterrupted) {
+      return false;
+    }
     return this.path.length === 0 || this.currentPathIndex >= this.path.length;
   }
 
@@ -179,10 +188,44 @@ export class NPC {
 
   public startConversation(): void {
     this.isInConversation = true;
-    if (this.sprite.playing) this.sprite.stop();
+    this.setBusy(true);
+    
+    // Only interrupt and clear path if it's a VISIT action
+    if (this.currentActionType === 'VISIT') {
+      this.isInterrupted = true;
+      if (this.sprite.playing) this.sprite.stop();
+      this.path = [];
+      this.savedPath = [];
+      this.interruptedTarget = null;
+      this.currentActionType = null;
+    } else if (this.currentActionType === 'FARM') {
+      // For farming, save the path to resume later
+      if (this.path.length > 0 && this.currentPathIndex < this.path.length) {
+        this.savedPath = [...this.path];
+        this.interruptedTarget = this.path[this.path.length - 1];
+      }
+      this.path = [];
+    }
   }
 
   public endConversation(): void {
     this.isInConversation = false;
+    this.isInterrupted = false;
+    this.setBusy(false);
+    
+    // Only resume path for FARM actions
+    if (this.currentActionType === 'FARM' && this.interruptedTarget) {
+      this.moveTo(this.interruptedTarget.x, this.interruptedTarget.y, 'FARM');
+      this.interruptedTarget = null;
+    }
+    this.savedPath = [];
+  }
+
+  public setBusy(busy: boolean): void {
+    this.isBusy = busy;
+  }
+
+  public isBusyState(): boolean {
+    return this.isBusy;
   }
 }

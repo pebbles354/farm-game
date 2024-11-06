@@ -17,6 +17,7 @@ import { data as f4Data } from '../../data/spritesheets/f4';
 import { data as f5Data } from '../../data/spritesheets/f5';
 import { data as f6Data } from '../../data/spritesheets/f6';
 import { NPCManager } from './systems/NPCManager';
+import { PauseButton } from './ui/PauseButton';
 
 export class Game {
   private app: PIXI.Application;
@@ -61,6 +62,10 @@ export class Game {
 
   // NPC Manager
   private npcManager: NPCManager;
+
+  // Pause Button
+  private isPaused: boolean = false;
+  private pauseButton: PauseButton;
 
   constructor(app: PIXI.Application) {
     this.app = app;
@@ -135,7 +140,17 @@ export class Game {
 
     // Initialize NPCs
     this.initializeNPCs();
- 
+
+    // Initialize Pause Button
+    this.pauseButton = new PauseButton(this.app, (isPaused) => {
+      this.isPaused = isPaused;
+      this.npcManager.setPauseState(isPaused);
+      if (this.player) {
+        this.player.setPauseState(isPaused);
+      }
+    });
+    // Add the pause button container to the UI container
+    this.uiContainer.addChild(this.pauseButton.getContainer());
   }
 
   loadTextures() {
@@ -193,6 +208,8 @@ export class Game {
   }
 
   update() {
+    if (this.isPaused) return;
+
     if (!this.isDragging && this.player) {
       this.player.update();
       this.centerViewOnPlayer();
