@@ -190,6 +190,8 @@ export class NPC {
     this.isInConversation = true;
     this.setBusy(true);
     
+    console.log(this.currentActionType, this.sprite.name);
+    
     // Only interrupt and clear path if it's a VISIT action
     if (this.currentActionType === 'VISIT') {
       this.isInterrupted = true;
@@ -209,6 +211,7 @@ export class NPC {
   }
 
   public endConversation(): void {
+    // console.log('endConversation');
     this.isInConversation = false;
     this.isInterrupted = false;
     this.setBusy(false);
