@@ -40,10 +40,15 @@ export class WorldGenerator {
     // NPC farms in corners and sides with more spacing, avoiding main paths
     const positions = [
       {x: this.worldSize/6, y: this.worldSize/6},     // Top left
-      {x: this.worldSize*5/6, y: this.worldSize/6},   // Top right
-      {x: this.worldSize/6, y: this.worldSize*5/6},   // Bottom left
-      {x: this.worldSize*5/6, y: this.worldSize*5/6}, // Bottom right
-      {x: this.worldSize/6, y: centerY + this.farmSize},    // Below middle left
+      
+      
+      //hiding temporarily as I get the mechanics down
+      // {x: this.worldSize*5/6, y: this.worldSize/6},   // Top right
+      // {x: this.worldSize/6, y: this.worldSize*5/6},   // Bottom left
+      // {x: this.worldSize*5/6, y: this.worldSize*5/6}, // Bottom right
+      
+      
+      // {x: this.worldSize/6, y: centerY + this.farmSize},    // Below middle left
       {x: this.worldSize*5/6, y: centerY - this.farmSize}   // Above middle right
     ];
 
@@ -387,5 +392,12 @@ export class WorldGenerator {
 
   isInvalid(x, y) {
     return this.invalidTiles.has(`${x},${y}`);
+  }
+
+  isOnPath(x, y) {
+    // Convert pixel coordinates to tile coordinates if needed
+    const tileX = Math.floor(x / this.tileSize);
+    const tileY = Math.floor(y / this.tileSize);
+    return this.isPathway(tileX, tileY);
   }
 }

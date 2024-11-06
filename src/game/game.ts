@@ -16,6 +16,7 @@ import { data as f3Data } from '../../data/spritesheets/f3';
 import { data as f4Data } from '../../data/spritesheets/f4';
 import { data as f5Data } from '../../data/spritesheets/f5';
 import { data as f6Data } from '../../data/spritesheets/f6';
+import { NPCManager } from './systems/NPCManager';
 
 export class Game {
   private app: PIXI.Application;
@@ -57,6 +58,9 @@ export class Game {
   // NPCs
   private npc?: NPC;
   private npcs: NPC[] = [];
+
+  // NPC Manager
+  private npcManager: NPCManager;
 
   constructor(app: PIXI.Application) {
     this.app = app;
@@ -199,7 +203,10 @@ export class Game {
       }
     }
 
-    // NPCs don't need updating yet
+    // Update all NPCs
+    this.npcs.forEach(npc => {
+      npc.update();
+    });
   }
 
   centerViewOnPlayer() {
@@ -240,27 +247,42 @@ export class Game {
   }
 
   private initializeNPCs() {
-    // Array of available spritesheet data for NPCs
     const spritesheetDataArray = [f2Data, f3Data, f4Data, f5Data, f6Data];
+    const npcNames = ['Bob', 'Amy', 'Corio', 'Danny', 'Eva'];
     let spritesheetIndex = 0;
 
-    // Iterate over all farms and create NPCs at the center of each non-player farm
-    this.worldGenerator.farmlandBounds.forEach((farm: any) => {
+    // Initialize NPC Manager
+    this.npcManager = new NPCManager(this.messageSystem, this.tileSize);
+
+    this.worldGenerator.farmlandBounds.forEach((farm: any, index: number) => {
       if (!farm.isPlayerFarm) {
         const centerX = (farm.startX + farm.endX) * this.tileSize / 2;
         const centerY = (farm.startY + farm.endY) * this.tileSize / 2;
-
-        // Select spritesheet data for this NPC
         const spritesheetData = spritesheetDataArray[spritesheetIndex % spritesheetDataArray.length];
-        spritesheetIndex++;
+        
 
-        console.log('NPC Position (farm):', { x: centerX, y: centerY });
+        const npcId = `npc_${index}`;
+        const npcName = npcNames[spritesheetIndex % spritesheetDataArray.length];
 
-        const npc = new NPC(centerX, centerY, spritesheetData);
+        // Initialize NPC state in manager
+        this.npcManager.initializeNPC(npcId, npcName, { x: centerX, y: centerY });
 
+        const npc = new NPC(
+          centerX, 
+          centerY, 
+          spritesheetData, 
+          this.npcManager.getNPCState(npcId),
+          this.worldGenerator
+        );
         this.npcs.push(npc);
         this.world.addChild(npc.getSprite());
+        this.npcManager.registerNPCSprite(npcId, npc);
+
+        spritesheetIndex++;
       }
     });
+
+    // Start NPC update loop
+    setInterval(() => this.npcManager.update(), 1000);
   }
 }
