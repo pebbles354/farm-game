@@ -33,8 +33,8 @@ export class Player {
     this.loadCharacterSprite();
   }
 
-  private async loadCharacterSprite(): Promise<void> {
-    const texture = await Assets.load('assets/32x32folk.png');
+  protected async loadCharacterSprite(): Promise<void> {
+    const texture = await PIXI.Assets.load('assets/32x32folk.png');
     this.spritesheet = new PIXI.Spritesheet(texture, f1Data);
     await this.spritesheet.parse();
 
@@ -93,7 +93,7 @@ export class Player {
           if (child === this.sprite || child.name === 'crop') continue;
 
           // Check collision with blocking objects
-          if (['store', 'shopkeeper', 'table', 'strawberryBox'].includes(child.name)) {
+          if (child.name !== null && ['store', 'shopkeeper', 'table', 'strawberryBox'].includes(child.name)) {
             const childBounds = child.getBounds();
             if (playerBounds.intersects(childBounds)) {
               return true;

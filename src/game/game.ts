@@ -10,6 +10,12 @@ import { InventoryUI } from './inventory/InventoryUI.js';
 import { MessageSystem } from './systems/MessageSystem';
 import { Store } from './store/Store';
 import { PlantingHandler } from './systems/PlantingHandler.ts';
+import { NPC } from './entities/NPC.tsx';
+import { data as f2Data } from '../../data/spritesheets/f2';
+import { data as f3Data } from '../../data/spritesheets/f3';
+import { data as f4Data } from '../../data/spritesheets/f4';
+import { data as f5Data } from '../../data/spritesheets/f5';
+import { data as f6Data } from '../../data/spritesheets/f6';
 
 export class Game {
   private app: PIXI.Application;
@@ -47,6 +53,10 @@ export class Game {
   // UI Container
   private uiContainer: PIXI.Container;
   private messageContainer: PIXI.Container;
+
+  // NPCs
+  private npc?: NPC;
+  private npcs: NPC[] = [];
 
   constructor(app: PIXI.Application) {
     this.app = app;
@@ -118,6 +128,10 @@ export class Game {
       this.cropSystem,
       this.worldGenerator
     );
+
+    // Initialize NPCs
+    this.initializeNPCs();
+ 
   }
 
   loadTextures() {
@@ -144,7 +158,17 @@ export class Game {
     const centerX = (this.worldSize * this.tileSize) / 2;
     const centerY = (this.worldSize * this.tileSize) / 2;
     this.player = new Player(centerX, centerY, this.tileSize, this.worldSize, this.world);
-    this.world.addChild(this.player.sprite);
+    this.world.addChild(this.player.getSprite());
+
+
+    // Create npc at the center of the farmland
+    // const center2X = (this.worldSize * this.tileSize) / 2;
+    // const center2Y = (this.worldSize * this.tileSize) / 3;
+    // this.npc = new NPC(center2X, center2Y);
+    // this.world.addChild(this.npc.getSprite());
+
+    // Run initializeNPC2
+    this.initializeNPCs();
     
     // Initialize store
     const storePosX = Math.floor(this.worldSize / 2) - 1;
@@ -174,6 +198,8 @@ export class Game {
         this.store.closeMenu();
       }
     }
+
+    // NPCs don't need updating yet
   }
 
   centerViewOnPlayer() {
@@ -210,6 +236,31 @@ export class Game {
 
     this.world.on('pointerupoutside', () => {
       this.isDragging = false;
+    });
+  }
+
+  private initializeNPCs() {
+    // Array of available spritesheet data for NPCs
+    const spritesheetDataArray = [f2Data, f3Data, f4Data, f5Data, f6Data];
+    let spritesheetIndex = 0;
+
+    // Iterate over all farms and create NPCs at the center of each non-player farm
+    this.worldGenerator.farmlandBounds.forEach((farm: any) => {
+      if (!farm.isPlayerFarm) {
+        const centerX = (farm.startX + farm.endX) * this.tileSize / 2;
+        const centerY = (farm.startY + farm.endY) * this.tileSize / 2;
+
+        // Select spritesheet data for this NPC
+        const spritesheetData = spritesheetDataArray[spritesheetIndex % spritesheetDataArray.length];
+        spritesheetIndex++;
+
+        console.log('NPC Position (farm):', { x: centerX, y: centerY });
+
+        const npc = new NPC(centerX, centerY, spritesheetData);
+
+        this.npcs.push(npc);
+        this.world.addChild(npc.getSprite());
+      }
     });
   }
 }
