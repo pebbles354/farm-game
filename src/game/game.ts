@@ -18,6 +18,7 @@ import { data as f5Data } from '../../data/spritesheets/f5';
 import { data as f6Data } from '../../data/spritesheets/f6';
 import { NPCManager } from './systems/NPCManager';
 import { PauseButton } from './ui/PauseButton';
+import { DebugButton } from './ui/DebugButton';
 
 export class Game {
   private app: PIXI.Application;
@@ -66,6 +67,9 @@ export class Game {
   // Pause Button
   private isPaused: boolean = false;
   private pauseButton: PauseButton;
+
+  // Debug Button
+  private debugButton: DebugButton;
 
   constructor(app: PIXI.Application) {
     this.app = app;
@@ -151,6 +155,13 @@ export class Game {
     });
     // Add the pause button container to the UI container
     this.uiContainer.addChild(this.pauseButton.getContainer());
+
+    // Initialize Debug Button
+    this.debugButton = new DebugButton(app, () => {
+      // Force the debug to use the current npcManager instance
+      this.npcManager.debugNPCs();
+    });
+    this.uiContainer.addChild(this.debugButton.getContainer());
   }
 
   loadTextures() {
